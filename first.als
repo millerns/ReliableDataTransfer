@@ -24,27 +24,31 @@ pred trace{
 
 pred step[s, s': State]{
 	(#s.toSend = 0) or sendData[s, s']
-	receiveData[s, s']
+	(#s.inTransit = 0) or receiveData[s, s']
 }
 
 fact TrinaryPosition{
-	all p: Packet | ((p in State.toSend) and !(p in State.inTransit) and !(p in State.received)) or
-		(!(p in State.toSend) and (p in State.inTransit) and !(p in State.received))  or
-		(!(p in State.toSend) and !(p in State.inTransit) and (p in State.received)) 
+	all p: Packet, s: State | ((p in s.toSend) and !(p in s.inTransit) and !(p in s.received)) or
+		(!(p in s.toSend) and (p in s.inTransit) and !(p in s.received))  or
+		(!(p in s.toSend) and !(p in s.inTransit) and (p in s.received)) 
+}
+
+fact ReceivedContainment{
+	all p: Packet, s: State-last | (p in s.received) => (p in (s.next).received)
 }
 
 pred sendData[s, s': State]{
-	some p: Packet | let r = (s.toSend - p) | (p in s.toSend) and !(p in s'.toSend)
-		and !(p in s.inTransit) and (p in s'.inTransit) and (s'.toSend = r)
+	some p: s.toSend | let r = (s.toSend - p) | (p in s.toSend) and
+		(p in s'.inTransit) and (s'.toSend = r)
 }
 
 pred receiveData[s, s': State] {
-	all p: s.inTransit |  (p in s.inTransit) and !(p in s'.inTransit)
+	some p: s.inTransit |  (p in s.inTransit) and !(p in s'.inTransit)
 		and !(p in s.received) and (p in s'.received) //and (s'.inTransit = (s.inTransit - p))
-		and (s'.received = (s.received + p))  and !(s.received in s'.inTransit)
+	//	and (s'.received = (s.received + p))  //and !(s.received in s'.inTransit)
 }
 
-run trace for 6
+run trace for 8
 
 /*
 pred send[s, s': Sender; r,' r: Reciever]{

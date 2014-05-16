@@ -30,12 +30,12 @@ pred init[s: State]{
 	//All data is in the list of data to be sent
 	all d: Data | d in Sender.(s.toSend)
 	//5 instances of data exist
-	#s.toSend = 1
+	#s.toSend = 5
+	#Packet = #Data
 	//Nothing is being sent
 	#s.inTransit = 0
 	//Nothing has been received
 	#s.received = 0
-	//Nothing is in a Packet
 }
 
 //Perform a send followed by a receive
@@ -44,7 +44,7 @@ pred twoStepA[s, s', s'': State]{
 	receive[s', s'']
 }
 
-//Perform a receive followed by a send
+//Perform a send followed by a receive
 pred twoStepB[s, s', s'': State]{
 	receive[s, s']
 	send[s', s'']
@@ -55,14 +55,14 @@ pred twoStepB[s, s', s'': State]{
 pred send[s, s': State]{
 	one d: Sender.(s.toSend) | one p: Packet | Sender.(s'.toSend) = Sender.(s.toSend) - d and
 		Channel.(s'.inTransit) = p and #Channel.(s.inTransit) = 0 and 
-		(Channel.(s'.inTransit)).payload = d 
+		(Channel.(s'.inTransit)).payload = d and s.received = s'.received
 }
 
 //Receive an instance of data by removing it from the list of
 //Packets in transit and placing it in the list of received data
 pred receive[s, s': State]{
 	one p: Channel.(s.inTransit) |
-		Receiver.(s'.received) = Receiver.(s.received) + p.payload and #Channel.(s'.inTransit) = 0
+		Receiver.(s'.received) = Receiver.(s.received) + p.payload and #Channel.(s'.inTransit) = 0 and s.toSend = s'.toSend
 }
 
 //Just show some states
@@ -74,22 +74,10 @@ pred show{
 pred traceTwoStep{
 	init[first]
 	all s: ( State-last - last.prev) | let s' = s.next | let s'' = s'.next |
-		twoStepA[s, s', s'']
+		twoStepA[s, s', s''] or twoStepB[s,s',s'']
 }
-
-//Trace a failing run of the model
-pred traceTwoStepFail{
-	init[first]
-	all s: State - (last + last.prev) | let s' = s.next | let s'' = s'.next |  
-		twoStepA[s, s', s''] or twoStepB[s, s', s'']
-	not (Sender.(first.toSend) = Receiver.(last.received))
-}
-
 
 run show
 
 //11 states
-run traceTwoStep for 3
-
-//11 states
-run traceTwoStepFail for 11
+run traceTwoStep for 11

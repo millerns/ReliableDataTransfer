@@ -19,7 +19,6 @@ one sig checkRelData{
 fact relData{ all d: Data| all c: Checksum|  #(checkRelData.rel).c = 1 and 
 		 #d.(checkRelData.rel) = 1
 }
-
 //represents the containers of data during transfer
 sig Packet{
 	ch: one Checksum,
@@ -36,17 +35,6 @@ sig State{
 	//Sender keeps track of the last thing to be sent
 	lastSent: lone Data
 }
-//represents a transition where ACK was sent from receiver
-pred replyACK[s, s': State]{
-	one a : ACK| #s.inTransit=0 and a = (Channel.(s'.inTransit)).payload and 
-		s'.received = s.received and s'.toSend = s.toSend and s.lastSent = s'.lastSent
-}
-//represents a transition where NAK was sent from receiver
-pred replyNAK[s, s': State]{
-	one n : NAK| #s.inTransit=0 and n = (Channel.(s'.inTransit)).payload and 
-	s'.toSend = s.toSend and s.lastSent = s'.lastSent
-}
-
 fun calcChecksum[d: Data]  : one Checksum{
 	d.(checkRelData.rel)
 }
@@ -83,24 +71,6 @@ pred force1CorruptFail{
 	#last.received !=5
 	one p: Packet| all o: Packet - p| calcChecksum[o.payload] = o.ch and calcChecksum[p.payload] != p.ch
 	skip[last.prev,last]
-}
-
-//Perform a send followed by a receive OR Perform skips
-pred threeStepA[s, s', s'', s''': State]{
-	firstSend[s, s'] or ackSend[s, s'] or nakSend[s,s'] or (skip[s, s'] and skip[s',s''] and skip [s'',s'''])
-	receive[s', s'', s'''] or (skip[s, s'] and skip[s',s''] and skip [s'',s'''])
-}
-
-//Perform a receive followed by a send OR a skip
-pred threeStepB[s, s', s'', s''': State]{
-	receive[s, s', s'']
-	ackSend[s'', s'''] or nakSend[s'',s'''] or skip[s'',s''']
-}
-
-//Perform a receive followed by a send OR a skip
-pred threeStepC[s,s',s'': State]{
-	receive[s.prev, s, s']
-	ackSend[s', s''] or nakSend[s',s''] or skip[s', s'']
 }
 
 //forces nothing to change
@@ -155,6 +125,34 @@ pred receive[s, s', s'': State]{
 		(Receiver.(s'.received) = Receiver.(s.received) + p.payload and 
 		Receiver.(s''.received) = Receiver.(s.received) and
 		s.toSend = s'.toSend and s.lastSent = s'.lastSent and replyNAK[s', s''] and calcChecksum[p.payload]!=p.ch)
+}
+//represents a transition where ACK was sent from receiver
+pred replyACK[s, s': State]{
+	one a : ACK| #s.inTransit=0 and a = (Channel.(s'.inTransit)).payload and 
+		s'.received = s.received and s'.toSend = s.toSend and s.lastSent = s'.lastSent
+}
+//represents a transition where NAK was sent from receiver
+pred replyNAK[s, s': State]{
+	one n : NAK| #s.inTransit=0 and n = (Channel.(s'.inTransit)).payload and 
+	s'.toSend = s.toSend and s.lastSent = s'.lastSent
+}
+
+//Perform a send followed by a receive OR Perform skips
+pred threeStepA[s, s', s'', s''': State]{
+	firstSend[s, s'] or ackSend[s, s'] or nakSend[s,s'] or (skip[s, s'] and skip[s',s''] and skip [s'',s'''])
+	receive[s', s'', s'''] or (skip[s, s'] and skip[s',s''] and skip [s'',s'''])
+}
+
+//Perform a receive followed by a send OR a skip
+pred threeStepB[s, s', s'', s''': State]{
+	receive[s, s', s'']
+	ackSend[s'', s'''] or nakSend[s'',s'''] or skip[s'',s''']
+}
+
+//Perform a receive followed by a send OR a skip
+pred threeStepC[s,s',s'': State]{
+	receive[s.prev, s, s']
+	ackSend[s', s''] or nakSend[s',s''] or skip[s', s'']
 }
 
 //Trace a successful run of the model

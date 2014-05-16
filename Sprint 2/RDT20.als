@@ -33,16 +33,18 @@ sig State{
 	inTransit: Channel lone -> lone Packet,
 	//The data that has been received
 	received: Receiver lone -> set Data,
+	//Sender keeps track of the last thing to be sent
+	lastSent: lone Data
 }
 //represents a transition where ACK was sent from receiver
 pred replyACK[s, s': State]{
 	one a : ACK| #s.inTransit=0 and a = (Channel.(s'.inTransit)).payload and 
-		s'.received = s.received and s'.toSend = s.toSend
+		s'.received = s.received and s'.toSend = s.toSend and s.lastSent = s'.lastSent
 }
 //represents a transition where NAK was sent from receiver
 pred replyNAK[s, s': State]{
 	one n : NAK| #s.inTransit=0 and n = (Channel.(s'.inTransit)).payload and 
-	s'.toSend = s.toSend
+	s'.toSend = s.toSend and s.lastSent = s'.lastSent
 }
 
 fun calcChecksum[d: Data]  : one Checksum{
@@ -60,6 +62,7 @@ pred init[s: State]{
 	#s.inTransit = 0
 	//Nothing has been received
 	#s.received = 0
+	#s.lastSent = 0
 }
 //Forces no corrupt data
 pred force0Corrupt{
@@ -72,7 +75,7 @@ pred force0Corrupt{
 pred force1CorruptSucceed{
 	#Packet = 8
 	#last.received = 5
-	one p: Packet| all o: Packet - p| calcChecksum[o.payload] = o.ch and calcChecksum[p.payload] != p.ch
+	one p: Packet| all o: Packet - p| calcChecksum[o.payload] = o.ch and calcChecksum[p.payload] != p.ch and p.payload in (Data-NAK-ACK)
 }
 //Forces 1 corrupt data and ensures failure
 pred force1CorruptFail{
@@ -112,7 +115,7 @@ pred skip[s, s': State]{
 pred firstSend[s, s': State]{
 	one d: Sender.(s.toSend) | one p: Packet | Sender.(s'.toSend) = Sender.(s.toSend) - d and
 		Channel.(s'.inTransit) = p and #Channel.(s.inTransit) = 0 and 
-		(Channel.(s'.inTransit)).payload = d and s.received = s'.received
+		(Channel.(s'.inTransit)).payload = d and s.received = s'.received and s'.lastSent = d
 }
 
 //Transition to send data from the sender when fed an ACK
@@ -121,20 +124,20 @@ pred ackSend[s, s': State]{
 		Sender.(s'.toSend) = Sender.(s.toSend) - d and
 		Channel.(s'.inTransit) = p and t in ACK  and 
 		(Channel.(s'.inTransit)).payload = d and s.received = s'.received and 
-		calcChecksum[t] = (Channel.(s.inTransit)).ch
+		calcChecksum[t] = (Channel.(s.inTransit)).ch and s'.lastSent = s.lastSent
 }
 
 //function to get the last data sent
-fun lastSent[s: State] : one Data{
-	(Channel.((s.prev.prev).inTransit)).payload
-}
+//fun lastSent[s: State] : one Data{
+	//(Channel.((s.prev.prev).inTransit)).payload
+//}
 //transition to send data from sender when fed a NAK
 pred nakSend[s, s': State]{
-	let d = lastSent[s]| one p: Packet | let t= (Channel.(s.inTransit)).payload |
+	let d = s.lastSent| one p: Packet | let t= (Channel.(s.inTransit)).payload |
 		 s.toSend = s'.toSend and p.payload = d and
 		Channel.(s'.inTransit) = p and t in NAK  and 
 		s.received = s'.received and p.ch = calcChecksum[d] and
-		calcChecksum[t] = (Channel.(s.inTransit)).ch
+		calcChecksum[t] = (Channel.(s.inTransit)).ch and s'.lastSent = d
 }
 
 
@@ -147,11 +150,11 @@ pred nakSend[s, s': State]{
 pred receive[s, s', s'': State]{
 	one p: Channel.(s.inTransit) |
 		(Receiver.(s'.received) = Receiver.(s.received) + p.payload and 
-		s.toSend = s'.toSend and replyACK[s', s''] and calcChecksum[p.payload]=p.ch)
+		s.toSend = s'.toSend and s.lastSent = s'.lastSent and replyACK[s', s''] and calcChecksum[p.payload]=p.ch)
 		or 
 		(Receiver.(s'.received) = Receiver.(s.received) + p.payload and 
 		Receiver.(s''.received) = Receiver.(s.received) and
-		s.toSend = s'.toSend and replyNAK[s', s''] and calcChecksum[p.payload]!=p.ch)
+		s.toSend = s'.toSend and s.lastSent = s'.lastSent and replyNAK[s', s''] and calcChecksum[p.payload]!=p.ch)
 }
 
 //Trace a successful run of the model

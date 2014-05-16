@@ -6,14 +6,13 @@ lone sig Sender{}
 lone sig Channel{}
 //represents the Receiver of the data
 lone sig Receiver{}
-
+//each data has a checksum
 sig Checksum{}
-
 //represents the data that we are trying to send
 sig Data{}
-
+//represents acknowledgement data
 one sig ACK, NAK extends Data{}
-
+//represents the one to one unique relationship between data and checksum
 one sig checkRelData{
 	rel: Data one -> one Checksum
 }
@@ -35,10 +34,12 @@ sig State{
 	//The data that has been received
 	received: Receiver lone -> set Data,
 }
+//represents a transition where ACK was sent from receiver
 pred replyACK[s, s': State]{
 	one a : ACK| #s.inTransit=0 and a = (Channel.(s'.inTransit)).payload and 
 		s'.received = s.received and s'.toSend = s.toSend
 }
+//represents a transition where NAK was sent from receiver
 pred replyNAK[s, s': State]{
 	one n : NAK| #s.inTransit=0 and n = (Channel.(s'.inTransit)).payload and 
 	s'.toSend = s.toSend
@@ -49,7 +50,7 @@ fun calcChecksum[d: Data]  : one Checksum{
 }
 //Sets the initial status of the model
 pred init[s: State]{
-	//All data is in the list of data to be sent
+	//All data is in the list of data (Not nak or ack) to be sent
 	all d: (Data-ACK-NAK) | d in Sender.(s.toSend)
 	no d: ACK+NAK | d in Sender.(s.toSend)
 	//5 instances of data exist
@@ -60,42 +61,46 @@ pred init[s: State]{
 	//Nothing has been received
 	#s.received = 0
 }
+//Forces no corrupt data
 pred force0Corrupt{
 	all p1: Packet| all p2: Packet - p1|  p1.payload != p2.payload
 	all p: Packet| calcChecksum[p.payload] = p.ch
 	#Packet = #Data
 	#last.received = 5
 }
+//Forces 1 corrupt data and guaruntees all are received
 pred force1CorruptSucceed{
 	#Packet = 8
 	#last.received = 5
 	one p: Packet| all o: Packet - p| calcChecksum[o.payload] = o.ch and calcChecksum[p.payload] != p.ch
 }
+//Forces 1 corrupt data and ensures failure
 pred force1CorruptFail{
 	#Packet = 8
 	#last.received !=5
 	one p: Packet| all o: Packet - p| calcChecksum[o.payload] = o.ch and calcChecksum[p.payload] != p.ch
 	skip[last.prev,last]
 }
-pred force2Corrupt{
-	#Packet =9
-}
 
-//Perform a send followed by a receive
+//Perform a send followed by a receive OR Perform skips
 pred threeStepA[s, s', s'', s''': State]{
 	firstSend[s, s'] or ackSend[s, s'] or nakSend[s,s'] or (skip[s, s'] and skip[s',s''] and skip [s'',s'''])
 	receive[s', s'', s'''] or (skip[s, s'] and skip[s',s''] and skip [s'',s'''])
 }
 
-//Perform a send followed by a receive
+//Perform a receive followed by a send OR a skip
 pred threeStepB[s, s', s'', s''': State]{
 	receive[s, s', s'']
 	ackSend[s'', s'''] or nakSend[s'',s'''] or skip[s'',s''']
 }
+
+//Perform a receive followed by a send OR a skip
 pred threeStepC[s,s',s'': State]{
 	receive[s.prev, s, s']
 	ackSend[s', s''] or nakSend[s',s''] or skip[s', s'']
 }
+
+//forces nothing to change
 pred skip[s, s': State]{
 	one n:NAK+ACK| (Channel.(s.inTransit)).payload=n and s.toSend = s'.toSend and
 		s.inTransit = s'.inTransit and s.received = s'.received and 
@@ -109,18 +114,21 @@ pred firstSend[s, s': State]{
 		Channel.(s'.inTransit) = p and #Channel.(s.inTransit) = 0 and 
 		(Channel.(s'.inTransit)).payload = d and s.received = s'.received
 }
+
+//Transition to send data from the sender when fed an ACK
 pred ackSend[s, s': State]{
 	one d: Sender.(s.toSend) | one p: Packet | let t = (Channel.(s.inTransit)).payload| 
 		Sender.(s'.toSend) = Sender.(s.toSend) - d and
 		Channel.(s'.inTransit) = p and t in ACK  and 
 		(Channel.(s'.inTransit)).payload = d and s.received = s'.received and 
 		calcChecksum[t] = (Channel.(s.inTransit)).ch
-		
 }
+
+//function to get the last data sent
 fun lastSent[s: State] : one Data{
 	(Channel.((s.prev.prev).inTransit)).payload
 }
-
+//transition to send data from sender when fed a NAK
 pred nakSend[s, s': State]{
 	let d = lastSent[s]| one p: Packet | let t= (Channel.(s.inTransit)).payload |
 		 s.toSend = s'.toSend and p.payload = d and
@@ -132,6 +140,10 @@ pred nakSend[s, s': State]{
 
 //Receive an instance of data by removing it from the list of
 //Packets in transit and placing it in the list of received data
+//and replying with an ack
+//OR
+//Receive an instance of data that has been corrupted and
+//reply with a NAK
 pred receive[s, s', s'': State]{
 	one p: Channel.(s.inTransit) |
 		(Receiver.(s'.received) = Receiver.(s.received) + p.payload and 
@@ -151,7 +163,7 @@ pred traceNoCorruption{
 	all s: ( State-last - last.prev - last.prev.prev) | let s' = s.next | let s'' = s'.next | let s''' = s''.next|
 		threeStepA[s, s', s'', s'''] or threeStepB[s,s',s'', s'''] or threeStepC[s,s',s'']
 }
-//Trace a successful run of the model
+//Trace a FAIL run of the model
 pred traceOneCorruptFail{
 	init[first]
 	firstSend[first, first.next]
@@ -160,7 +172,7 @@ pred traceOneCorruptFail{
 	all s: ( State-last - last.prev - last.prev.prev) | let s' = s.next | let s'' = s'.next | let s''' = s''.next|
 		threeStepA[s, s', s'', s'''] or threeStepB[s,s',s'', s'''] or threeStepC[s,s',s'']
 }
-//Trace a successful run of the model
+//Trace a successful run of the model with corruption
 pred traceOneCorruptSuccess{
 	init[first]
 	firstSend[first, first.next]
@@ -170,9 +182,11 @@ pred traceOneCorruptSuccess{
 		threeStepA[s, s', s'', s'''] or threeStepB[s,s',s'', s'''] or threeStepC[s,s',s'']
 }
 
-//11 states
+//16 states
 run traceNoCorruption for 16
 
+//8 states (could be more, would hang)
 run traceOneCorruptFail for 8
 
+//19 states
 run traceOneCorruptSuccess for 19

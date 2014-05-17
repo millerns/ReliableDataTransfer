@@ -1,0 +1,49 @@
+<?xml version="1.0"?>
+<alloy>
+
+<view>
+
+<projection> <type name="checkRelData"/> <type name="State"/> </projection>
+
+<defaultnode/>
+
+<defaultedge/>
+
+<node>
+   <type name="checkRelData"/>
+   <type name="Checksum"/>
+   <type name="Int"/>
+   <type name="State"/>
+   <type name="String"/>
+   <type name="univ"/>
+   <type name="ordering/Ord"/>
+   <type name="seq/Int"/>
+   <set name="First" type="ordering/Ord"/>
+   <set name="Next" type="ordering/Ord"/>
+</node>
+
+<node shape="Ellipse" color="Blue">
+   <type name="Channel"/>
+   <type name="Receiver"/>
+   <type name="Sender"/>
+</node>
+
+<node shape="House" color="Gray">
+   <type name="Packet"/>
+</node>
+
+<node shape="Parallelogram" color="Green">
+   <type name="Data"/>
+</node>
+
+<node shape="Triangle" color="Red">
+   <type name="NAK"/>
+</node>
+
+<node shape="Triangle" color="White">
+   <type name="ACK"/>
+</node>
+
+</view>
+
+</alloy>

@@ -94,7 +94,7 @@ pred ackSend[s, s': State]{
 		Sender.(s'.toSend) = Sender.(s.toSend) - d and
 		Channel.(s'.inTransit) = p and t in ACK  and 
 		(Channel.(s'.inTransit)).payload = d and s.received = s'.received and 
-		calcChecksum[t] = (Channel.(s.inTransit)).ch and s'.lastSent = s.lastSent
+		calcChecksum[t] = (Channel.(s.inTransit)).ch and s'.lastSent = d
 }
 
 //function to get the last data sent
@@ -106,7 +106,7 @@ pred nakSend[s, s': State]{
 	let d = s.lastSent| one p: Packet | let t= (Channel.(s.inTransit)).payload |
 		 s.toSend = s'.toSend and p.payload = d and
 		Channel.(s'.inTransit) = p and t in NAK  and 
-		s.received = s'.received and p.ch = calcChecksum[d] and
+		s.received = s'.received and 
 		calcChecksum[t] = (Channel.(s.inTransit)).ch and s'.lastSent = d
 }
 

@@ -19,10 +19,7 @@ one sig off extends Sequence{}
 //represents the one to one unique relationship between data and checksum
 one sig checkRelData{
 	rel: Data one -> one Checksum
-}
-fact relData{ all d: Data| all c: Checksum|  #(checkRelData.rel).c = 1 and 
-		 #d.(checkRelData.rel) = 1
-}
+}{#Checksum = #Data}
 //represents the containers of data during transfer
 sig Packet{
 	se: one Sequence,
@@ -50,7 +47,6 @@ pred init[s: State]{
 	no d: ACK+NAK | d in Sender.(s.toSend)
 	//5 instances of data exist
 	#s.toSend = 5
-	#Checksum = #Data
 	//Nothing is being sent
 	#s.inTransit = 0
 	//Nothing has been received
@@ -60,30 +56,16 @@ pred init[s: State]{
 //Forces no corrupt data
 pred force0Corrupt{
 	all p: Packet| calcChecksum[p.payload] = p.ch
-	#last.received = 5
+	#last.received = #(Data - ACK - NAK)
 	#Packet = #Data
 }
 //Forces 1 corrupt data and guaruntees all are received
 pred force1CorruptSucceed{
-	#Packet = 8
-	#last.received = 5
-	some p: Packet| all o: Packet - p| calcChecksum[o.payload] = o.ch and calcChecksum[p.payload] != p.ch and p.payload in (Data-NAK-ACK)
+	#Packet = #Data + 1
+	#last.received = #(Data - ACK - NAK)
+	calcChecksum[(Channel.(last.inTransit)).payload] = (Channel.(last.inTransit)).ch
+	let p =(Channel.(first.next.next.next.inTransit))| p.payload in NAK and p.ch != calcChecksum[p.payload]
 }
-//Forces 1 corrupt data and ensures failure
-pred force1CorruptFail{
-	#Packet = 8
-	#last.received !=5
-	one p: Packet| all o: Packet - p| calcChecksum[o.payload] = o.ch and calcChecksum[p.payload] != p.ch
-	skip[last.prev,last]
-}
-
-//forces nothing to change
-pred skip[s, s': State]{
-	one n:NAK+ACK| (Channel.(s.inTransit)).payload=n and s.toSend = s'.toSend and
-		s.inTransit = s'.inTransit and s.received = s'.received and 
-		(Channel.(s.inTransit)).ch != calcChecksum[n]
-}
-
 //Send an instance of data by removing it from the list of data
 //to send and placing it in a Packet which is placed inTransit
 pred firstSend[s, s': State]{
@@ -103,10 +85,16 @@ pred ackSend[s, s': State]{
 		Channel.(s'.inTransit) = p and t in ACK  and 
 		(Channel.(s'.inTransit)).payload = d and s.received = s'.received and 
 		calcChecksum[t] = (Channel.(s.inTransit)).ch and s'.lastSent = p
-		and p.se = flipBit[s]
-		
+		and p.se = flipBit[s] or corruptSend[s,s',d,t,p]
 }
 
+pred corruptSend[s,s':State, d,t:Data, p:Packet]{
+		 s.toSend = s'.toSend and p.payload = d and
+		Channel.(s'.inTransit) = p and ((t in ACK) or (t in NAK)) and 
+		s.received = s'.received and
+		calcChecksum[t] != (Channel.(s.inTransit)).ch and s'.lastSent = p
+		and p = s.lastSent and p.se = (s.lastSent).se
+}
 //function to get the last data sent
 //fun lastSent[s: State] : one Data{
 	//(Channel.((s.prev.prev).inTransit)).payload
@@ -116,9 +104,9 @@ pred nakSend[s, s': State]{
 	let d = (s.lastSent).payload| one p: Packet | let t= (Channel.(s.inTransit)).payload |
 		 s.toSend = s'.toSend and p.payload = d and
 		Channel.(s'.inTransit) = p and t in NAK  and 
-		s.received = s'.received and p.ch = calcChecksum[d] and
+		s.received = s'.received and
 		calcChecksum[t] = (Channel.(s.inTransit)).ch and s'.lastSent = p
-		and p.se = (s.lastSent).se
+		and p.se = (s.lastSent).se or corruptSend[s,s',d,t,p]
 }
 pred receiveOff[s,s',s'': State]{
 	one p: Channel.(s.inTransit) |
@@ -162,7 +150,7 @@ pred replyNAK[s, s': State]{
 
 //Perform a send followed by a receive OR Perform skips
 pred threeStepAOff[s, s', s'', s''': State]{
-	firstSend[s, s'] or ackSend[s,s']
+	firstSend[s, s'] or ackSend[s,s'] or nakSend[s,s']
 	receiveOff[s', s'', s''']
 	
 }
@@ -174,7 +162,7 @@ pred threeStepBOff[s, s', s'', s''': State]{
 }
 
 pred threeStepAOn[s, s', s'', s''': State]{
-	ackSend[s,s']
+	ackSend[s,s'] or nakSend[s,s']
 	receiveOn[s', s'', s''']
 }
 
@@ -212,36 +200,25 @@ pred offToOn[s1,s2,s3,s4,s5: State]{
 //Trace a successful run of the model
 pred traceNoCorruption{
 	init[first]
+	force0Corrupt
+	//skip[first.next.next.next, first.next.next.next.next]
+
+	all s1: (State - last - last.prev - last.prev.prev - last.prev.prev.prev - last.prev.prev.prev.prev)| let s2 = s1.next| let s3 = s2.next| let s4 = s3.next | let s5 = s4.next|
+		off[s1,s2,s3,s4,s5] or on[s1,s2,s3,s4,s5] or offToOn[s1,s2,s3,s4,s5] or offToOn[s1.prev,s1,s2,s3,s4] or onToOff[s1,s2,s3,s4,s5] or onToOff[s1.prev,s1,s2,s3,s4] or offToOff[s1,s2,s3,s4,s5]  or offToOff[s1.prev, s1, s2, s3, s4] or onToOn[s1,s2,s3,s4,s5] or onToOn[s1.prev,s1,s2,s3,s4]
+}
+
+//Trace a successful run of the model with corruption
+pred traceOneCorruptSuccess{
+	init[first]
 	force1CorruptSucceed
 	//skip[first.next.next.next, first.next.next.next.next]
 
 	all s1: (State - last - last.prev - last.prev.prev - last.prev.prev.prev - last.prev.prev.prev.prev)| let s2 = s1.next| let s3 = s2.next| let s4 = s3.next | let s5 = s4.next|
-		off[s1,s2,s3,s4,s5] or on[s1,s2,s3,s4,s5] or offToOn[s1,s2,s3,s4,s5] or offToOn[s1.prev,s1,s2,s3,s4] or onToOff[s1,s2,s3,s4,s5] or onToOff[s1.prev,s1,s2,s3,s4] or offToOff[s1,s2,s3,s4,s5] or onToOn[s1,s2,s3,s4,s5]
-}
-//Trace a FAIL run of the model
-pred traceOneCorruptFail{
-	init[first]
-	force1CorruptFail
-	//skip[first.next.next.next, first.next.next.next.next]
-	//all s: ( State-last - last.prev - last.prev.prev) | let s' = s.next | let s'' = s'.next | let s''' = s''.next|
-		
-		//threeStepA[s, s', s'', s'''] or threeStepB[s,s',s'', s'''] or threeStepC[s,s',s'']
-}
-//Trace a successful run of the model with corruption
-pred traceOneCorruptSuccess{
-	init[first]
-	firstSend[first, first.next]
-	force1CorruptSucceed
-	//skip[first.next.next.next, first.next.next.next.next]
-	//all s: ( State-last - last.prev - last.prev.prev) | let s' = s.next | let s'' = s'.next | let s''' = s''.next|
-		//threeStepA[s, s', s'', s'''] or threeStepB[s,s',s'', s'''] or threeStepC[s,s',s'']
+		off[s1,s2,s3,s4,s5] or on[s1,s2,s3,s4,s5] or offToOn[s1,s2,s3,s4,s5] or offToOn[s1.prev,s1,s2,s3,s4] or onToOff[s1,s2,s3,s4,s5] or onToOff[s1.prev,s1,s2,s3,s4] or offToOff[s1,s2,s3,s4,s5]  or offToOff[s1.prev, s1, s2, s3, s4] or onToOn[s1,s2,s3,s4,s5] or onToOn[s1.prev,s1,s2,s3,s4]
 }
 
 //16 states
-run traceNoCorruption for 22
-
-//8 states (could be more, would hang)
-run traceOneCorruptFail for 8
+run traceNoCorruption for 16
 
 //19 states
-run traceOneCorruptSuccess for 19
+run traceOneCorruptSuccess for 22

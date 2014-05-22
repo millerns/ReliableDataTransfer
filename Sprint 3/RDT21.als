@@ -1,11 +1,11 @@
 open util/ordering[State]
 
 //represents the Sender of data
-lone sig Sender{}
+one sig Sender{}
 //represents the Channel that data travels through when sent
-lone sig Channel{}
+one sig Channel{}
 //represents the Receiver of the data
-lone sig Receiver{}
+one sig Receiver{}
 //each data has a checksum
 sig Checksum{}
 //represents the data that we are trying to send
@@ -39,32 +39,6 @@ sig State{
 }
 fun calcChecksum[d: Data]  : one Checksum{
 	d.(checkRelData.rel)
-}
-//Sets the initial status of the model
-pred init[s: State]{
-	//All data is in the list of data (Not nak or ack) to be sent
-	all d: (Data-ACK-NAK) | d in Sender.(s.toSend)
-	no d: ACK+NAK | d in Sender.(s.toSend)
-	//5 instances of data exist
-	#s.toSend = 5
-	//Nothing is being sent
-	#s.inTransit = 0
-	//Nothing has been received
-	#s.received = 0
-	#s.lastSent = 0
-}
-//Forces no corrupt data
-pred force0Corrupt{
-	all p: Packet| calcChecksum[p.payload] = p.ch
-	#last.received = #(Data - ACK - NAK)
-	#Packet = #Data
-}
-//Forces 1 corrupt data and guaruntees all are received
-pred force1CorruptSucceed{
-	#Packet = #Data + 1
-	#last.received = #(Data - ACK - NAK)
-	calcChecksum[(Channel.(last.inTransit)).payload] = (Channel.(last.inTransit)).ch
-	let p =(Channel.(first.next.next.next.inTransit))| p.payload in NAK and p.ch != calcChecksum[p.payload]
 }
 //Send an instance of data by removing it from the list of data
 //to send and placing it in a Packet which is placed inTransit
@@ -196,6 +170,52 @@ pred offToOn[s1,s2,s3,s4,s5: State]{
 	threeStepBOff[s1,s2,s3,s4]
 	threeStepAOn[s3,s4,s5,s5.next]
 }
+//Sets the initial status of the model
+pred init[s: State]{
+	//All data is in the list of data (Not nak or ack) to be sent
+	all d: (Data-ACK-NAK) | d in Sender.(s.toSend)
+	no d: ACK+NAK | d in Sender.(s.toSend)
+	//5 instances of data exist
+	#s.toSend = 5
+	//Nothing is being sent
+	#s.inTransit = 0
+	//Nothing has been received
+	#s.received = 0
+	#s.lastSent = 0
+}
+assert noFailWhenCorrupt{
+	//All data is in the list of data (Not nak or ack) to be sent
+	all d: (Data-ACK-NAK) | d in Sender.(first.toSend)
+	no d: ACK+NAK | d in Sender.(first.toSend)
+	//5 instances of data exist
+	#first.toSend = 5
+	//Nothing is being sent
+	#first.inTransit = 0
+	//Nothing has been received
+	#first.received = 0
+	#first.lastSent = 0
+	#State = 22
+	#Packet = #Data + 1
+	#last.received = #(Data - ACK - NAK)
+	calcChecksum[(Channel.(last.inTransit)).payload] = (Channel.(last.inTransit)).ch
+	let p =(Channel.(first.next.next.next.inTransit))| p.payload in NAK and p.ch != calcChecksum[p.payload]
+
+	all s1: (State - last - last.prev - last.prev.prev - last.prev.prev.prev - last.prev.prev.prev.prev)| let s2 = s1.next| let s3 = s2.next| let s4 = s3.next | let s5 = s4.next|
+		off[s1,s2,s3,s4,s5] or on[s1,s2,s3,s4,s5] or offToOn[s1,s2,s3,s4,s5] or offToOn[s1.prev,s1,s2,s3,s4] or onToOff[s1,s2,s3,s4,s5] or onToOff[s1.prev,s1,s2,s3,s4] or offToOff[s1,s2,s3,s4,s5]  or offToOff[s1.prev, s1, s2, s3, s4] or onToOn[s1,s2,s3,s4,s5] or onToOn[s1.prev,s1,s2,s3,s4]
+}
+//Forces no corrupt data
+pred force0Corrupt{
+	all p: Packet| calcChecksum[p.payload] = p.ch
+	#last.received = #(Data - ACK - NAK)
+	#Packet = #Data
+}
+//Forces 1 corrupt data and guaruntees all are received
+pred force1CorruptSucceed{
+	#Packet = #(Data + Receiver)
+	#last.received = #(Data - ACK - NAK)
+	calcChecksum[(Channel.(last.inTransit)).payload] = (Channel.(last.inTransit)).ch
+	let p =(Channel.(first.next.next.next.inTransit))| p.payload in NAK and p.ch != calcChecksum[p.payload]
+}
 	//		off[s1,s2,s3,s4,s5] or on[s1,s2,s3,s4,s5] or offToOff[s1,s2,s3,s4,s5] or offToOn[s1,s2,s3,s4,s5] or onToOn[s1,s2,s3,s4,s5] or onToOff[s1,s2,s3,s4,s5] 
 //Trace a successful run of the model
 pred traceNoCorruption{
@@ -216,9 +236,17 @@ pred traceOneCorruptSuccess{
 	all s1: (State - last - last.prev - last.prev.prev - last.prev.prev.prev - last.prev.prev.prev.prev)| let s2 = s1.next| let s3 = s2.next| let s4 = s3.next | let s5 = s4.next|
 		off[s1,s2,s3,s4,s5] or on[s1,s2,s3,s4,s5] or offToOn[s1,s2,s3,s4,s5] or offToOn[s1.prev,s1,s2,s3,s4] or onToOff[s1,s2,s3,s4,s5] or onToOff[s1.prev,s1,s2,s3,s4] or offToOff[s1,s2,s3,s4,s5]  or offToOff[s1.prev, s1, s2, s3, s4] or onToOn[s1,s2,s3,s4,s5] or onToOn[s1.prev,s1,s2,s3,s4]
 }
+pred traceFail{
+	init[first]
+	#last.received != #(Data - ACK - NAK)
 
+	all s1: (State - last - last.prev - last.prev.prev - last.prev.prev.prev - last.prev.prev.prev.prev)| let s2 = s1.next| let s3 = s2.next| let s4 = s3.next | let s5 = s4.next|
+		off[s1,s2,s3,s4,s5] or on[s1,s2,s3,s4,s5] or offToOn[s1,s2,s3,s4,s5] or offToOn[s1.prev,s1,s2,s3,s4] or onToOff[s1,s2,s3,s4,s5] or onToOff[s1.prev,s1,s2,s3,s4] or offToOff[s1,s2,s3,s4,s5]  or offToOff[s1.prev, s1, s2, s3, s4] or onToOn[s1,s2,s3,s4,s5] or onToOn[s1.prev,s1,s2,s3,s4]
+}
 //16 states
 run traceNoCorruption for 16
 
 //19 states
 run traceOneCorruptSuccess for 22
+
+check noFailWhenCorrupt

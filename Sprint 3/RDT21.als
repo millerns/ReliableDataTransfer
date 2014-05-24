@@ -242,7 +242,7 @@ run force0Corrupt for 16
 //22 states
 run forceNAKCorruptSucceed for 22
 
-//22 States
-run forceOneCorruptSucceed for 22
+//19 States
+run forceOneCorruptSucceed for 19
 check noFailWhenCorrupt
 check noFailWhenNoCorrupt
